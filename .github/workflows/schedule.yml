@@ -1,11 +1,9 @@
 name: Mudrex Price Fetcher
 
 on:
-  schedule:
-    # 4:00 AM UTC is 9:30 AM IST (Runs 30 minutes early, script will sleep until exactly 10:00 AM)
-    - cron: '0 4 * * *'
-    # 11:30 AM UTC is 5:00 PM IST (Runs 30 minutes early, script will sleep until exactly 5:30 PM)
-    - cron: '30 11 * * *'
+  # Allows external webhook triggers (e.g. from Make.com)
+  repository_dispatch:
+    types: [trigger-bot]
   # Allows you to run this workflow manually from the GitHub Actions tab for testing
   workflow_dispatch:
 

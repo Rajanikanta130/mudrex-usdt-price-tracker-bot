@@ -8,9 +8,6 @@ on:
     - cron: '30 11 * * *'
   # Allows you to run this workflow manually from the GitHub Actions tab for testing
   workflow_dispatch:
-  # Allows you to run this workflow via an external webhook trigger (like cron-job.org)
-  repository_dispatch:
-    types: [run-bot]
 
 jobs:
   fetch-and-email:

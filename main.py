@@ -2,27 +2,69 @@ import os
 import smtplib
 import requests
 import time
+import re
+import json
 from datetime import datetime
 import pytz
 from bs4 import BeautifulSoup
 from email.message import EmailMessage
 
-def fetch_price():
+def fetch_price(retries=3, delay=5):
     url = 'https://mudrex.com/coins/usd-coin'
     headers = {'User-Agent': 'Mozilla/5.0'}
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Extract the price by looking for the ₹ symbol
-        for text in soup.stripped_strings:
-            if '₹' in text:
-                return text
-        return "Price not found"
-    except Exception as e:
-        print(f"Error fetching price: {e}")
-        return "Error fetching price"
+    
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 1. Try to parse JSON-LD Product schema (most reliable, standard format)
+            scripts = soup.find_all('script', type='application/ld+json')
+            for script in scripts:
+                if not script.string:
+                    continue
+                try:
+                    data = json.loads(script.string)
+                    if data.get('@type') == 'Product':
+                        offers = data.get('offers', {})
+                        price = offers.get('price')
+                        if price is not None:
+                            price_val = float(price)
+                            if price_val > 0:
+                                return f"₹{price_val:.2f}"
+                            else:
+                                print(f"Warning: JSON-LD price on attempt {attempt} is zero or negative: {price_val}")
+                except Exception as parse_err:
+                    print(f"JSON-LD parsing error on attempt {attempt}: {parse_err}")
+            
+            # 2. Fallback: Search for ₹ followed by a valid number in stripped strings (ignores sentences, volumes, high/low)
+            price_pattern = re.compile(r'^₹\s*(\d{1,3}(,\d{3})*(\.\d+)?)$')
+            for text in soup.stripped_strings:
+                text_clean = text.strip()
+                text_clean = re.sub(r'\s+', '', text_clean)
+                match = price_pattern.match(text_clean)
+                if match:
+                    val_str = match.group(1).replace(',', '')
+                    try:
+                        val = float(val_str)
+                        if val > 0:
+                            return text_clean
+                        else:
+                            print(f"Warning: Regex-matched price on attempt {attempt} is zero or negative: {val}")
+                    except ValueError:
+                        continue
+            
+            print(f"Warning: Attempt {attempt} could not extract a valid non-zero price.")
+            
+        except Exception as e:
+            print(f"Error fetching price on attempt {attempt}: {e}")
+            
+        if attempt < retries:
+            print(f"Sleeping for {delay} seconds before retry...")
+            time.sleep(delay)
+            
+    return "Error fetching price"
 
 def send_email(price):
     sender_email = os.environ.get('SENDER_EMAIL')
